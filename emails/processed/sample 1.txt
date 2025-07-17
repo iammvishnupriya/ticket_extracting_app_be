@@ -1,0 +1,16 @@
+From: Software Support <SoftwareSupport@hepl.com>
+Sent: 12 July 2025 10:26
+To: Arun Prasad S/IT/HEPL <arun.se@hepl.com>
+Cc: Ganagavathy K G V/IT/HEPL <ganaga.v@hepl.com>; Ajaykiran S/IT/HEPL <ajay.s@hepl.com>; Kaviya M/IT/HEPL <kaviya.m@hepl.com>; Shalini S/IT/HEPL <shalini.s@hepl.com>
+Subject: Fw: Cab request
+ 
+Dear Arun,
+
+As per the user request, kindly update the supervisor details for Mrs. Rebecca from Srikanth to Vairam. Additionally, please move the request ticket REQ1900 from Srikanth's queue to Vairam's queue in the HEPL I-view tool.
+
+Once the changes have been made in the portal, kindly update us accordingly.
+
+Thanks and Regards,
+Prithika K
+Software Support
+04142 350036

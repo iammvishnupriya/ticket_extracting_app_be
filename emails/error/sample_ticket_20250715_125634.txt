@@ -1,0 +1,13 @@
+Ticket Summary: Login functionality not working properly
+Project/Product: CK_Alumni
+Issue Description: Users are unable to log in to the system, getting authentication errors
+Priority: HIGH
+Ticket Owner: john.doe@hepl.com
+Contributor: afreena.a@hepl.com
+Bug/Enhancement: BUG
+Status: OPEN
+Review: Pending technical review
+Impact/Roles: All users affected
+Contact: support@hepl.com
+Employee ID: EMP001
+Employee Name: John Doe
