@@ -3,16 +3,24 @@ package com.L3Support.TicketEmailExtraction.model;
 import java.time.LocalDate;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.L3Support.TicketEmailExtraction.converter.ProjectConverter;
+import com.L3Support.TicketEmailExtraction.enums.Project;
 
 @Entity
 @Data
@@ -28,8 +36,8 @@ public class Ticket {
     @Column(length = 500)
     private String ticketSummary;
     
-    @Column(length = 100)
-    private String project;
+    @Convert(converter = ProjectConverter.class)
+    private Project project;
     
     @Column(length = 2000)
     private String issueDescription;
@@ -42,8 +50,18 @@ public class Ticket {
     @Column(length = 100)
     private String ticketOwner;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contributor_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Contributor contributor;
+
+    // Transient field to accept contributor ID from frontend
+    @jakarta.persistence.Transient
+    private Long contributorId;
+
+    // Keep the old contributor field for backward compatibility during migration
     @Column(length = 500)
-    private String contributor;
+    private String contributorName;
 
     @Enumerated(EnumType.STRING)
     private BugType bugType;

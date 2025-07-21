@@ -2,15 +2,20 @@ package com.L3Support.TicketEmailExtraction.serviceImpl;
 
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.L3Support.TicketEmailExtraction.enums.Project;
 import com.L3Support.TicketEmailExtraction.model.BugType;
 import com.L3Support.TicketEmailExtraction.model.Priority;
 import com.L3Support.TicketEmailExtraction.model.Status;
@@ -33,14 +38,30 @@ public class TicketParserServiceImpl implements TicketParserService {
         return team;
     }
 
-    // Project list - you can provide this list
+    // Complete project list as provided
     private final List<String> validProjects = Arrays.asList(
-        "CK_Alumni",
+        "Material Receipt",
+        "My Buddy", 
+        "CK Alumni",
+        "HEPL Alumni",
+        "MMW Module(Ticket tool)",
+        "CK Trends",
+        "Livewire",
+        "Meeting Agenda",
+        "Pro Hire",
+        "E-Capex",
+        "SOP",
+        "Asset Management",
+        "Mould Mamp",
+        "E-Library",
+        "Outlet_Approval",
+        "RA_Tool",
+        "CK_Bakery",
         "I-View",
-        "HEPL",
         "CKPL",
-        "CavinKare"
-        // Add more projects here
+        "CavinKare",
+        "HRSS",
+        "HEPL"
     );
 
     @Override
@@ -67,7 +88,7 @@ public class TicketParserServiceImpl implements TicketParserService {
             log.info("📝 Issue Description: {}", issueDescription);
             
             // Determine project from email content
-            String project = determineProject(content);
+            Project project = determineProject(content);
             log.info("🏗️ Project: {}", project);
             
             // Determine priority from content
@@ -83,8 +104,8 @@ public class TicketParserServiceImpl implements TicketParserService {
             log.info("📊 Status: {}", status);
             
             // Find all contributors from L3 support team
-            String contributor = findContributor(toEmails);
-            log.info("👤 Contributors: {}", contributor);
+            String contributorName = findContributor(toEmails);
+            log.info("👤 Contributors: {}", contributorName);
             
             // Extract ticket owner (usually the sender)
             String ticketOwner = extractTicketOwner(fromEmail);
@@ -102,6 +123,10 @@ public class TicketParserServiceImpl implements TicketParserService {
             // Extract impact/roles
             String impact = extractImpact(content);
             log.info("💥 Impact: {}", impact);
+            
+            // Extract the sent date from email headers
+            LocalDate sentDate = extractSentDate(content);
+            log.info("📅 Sent Date: {}", sentDate);
 
             // Validate required fields
             if (ticketSummary == null || ticketSummary.trim().isEmpty()) {
@@ -113,10 +138,11 @@ public class TicketParserServiceImpl implements TicketParserService {
                     .ticketSummary(ticketSummary)
                     .project(project)
                     .issueDescription(issueDescription)
-                    .receivedDate(LocalDate.now())
+                    .receivedDate(sentDate)
                     .priority(priority)
                     .ticketOwner(ticketOwner)
-                    .contributor(contributor)
+                    .contributor(null) // Will be set later when we have database integration
+                    .contributorName(contributorName)
                     .bugType(bugType)
                     .status(status)
                     .contact(contact)
@@ -307,30 +333,167 @@ public class TicketParserServiceImpl implements TicketParserService {
     }
 
     // Determine project from email content
-    private String determineProject(String content) {
+    private Project determineProject(String content) {
         String contentLower = content.toLowerCase();
         
-        for (String project : validProjects) {
-            if (contentLower.contains(project.toLowerCase())) {
+        log.debug("🔍 Analyzing content for project determination: {}", 
+                 contentLower.length() > 200 ? contentLower.substring(0, 200) + "..." : contentLower);
+        
+        // First, try direct matching with project display names
+        for (String projectName : validProjects) {
+            if (contentLower.contains(projectName.toLowerCase())) {
+                Project project = Project.fromString(projectName);
+                log.info("🎯 Project found by direct name match '{}': {}", projectName, project);
                 return project;
             }
         }
         
-        // Check for specific keywords
-        if (contentLower.contains("i-view") || contentLower.contains("iview")) {
-            return "I-View";
-        }
-        if (contentLower.contains("hrss") || contentLower.contains("hr")) {
-            return "HRSS";
-        }
-        if (contentLower.contains("alumni")) {
-            return "CK_Alumni";
-        }
-        if (contentLower.contains("cavinkare") || contentLower.contains("ckpl")) {
-            return "CKPL";
+        // Enhanced keyword-based matching for better accuracy
+        // Material Receipt variations
+        if (contentLower.contains("material receipt") || contentLower.contains("materialreceipt") ||
+            contentLower.contains("material reciept") || contentLower.contains("materialreciept")) {
+            log.info("🎯 Project found by keyword matching: MATERIAL_RECEIPT");
+            return Project.MATERIAL_RECEIPT;
         }
         
-        return "General"; // Default project
+        // My Buddy variations
+        if (contentLower.contains("my buddy") || contentLower.contains("mybuddy")) {
+            log.info("🎯 Project found by keyword matching: MY_BUDDY");
+            return Project.MY_BUDDY;
+        }
+        
+        // Alumni projects - prioritize HEPL Alumni if both HEPL and Alumni are present
+        if (contentLower.contains("alumni")) {
+            if (contentLower.contains("hepl")) {
+                log.info("🎯 Project found by keyword matching: HEPL_ALUMNI");
+                return Project.HEPL_ALUMNI;
+            } else if (contentLower.contains("ck")) {
+                log.info("🎯 Project found by keyword matching: CK_ALUMNI");
+                return Project.CK_ALUMNI;
+            } else {
+                log.info("🎯 Project found by keyword matching (default alumni): CK_ALUMNI");
+                return Project.CK_ALUMNI;
+            }
+        }
+        
+        // HEPL Portal (when HEPL is mentioned but not alumni)
+        if (contentLower.contains("hepl") && !contentLower.contains("alumni")) {
+            log.info("🎯 Project found by keyword matching: HEPL_PORTAL");
+            return Project.HEPL_PORTAL;
+        }
+        
+        // MMW Module / Ticket Tool
+        if (contentLower.contains("mmw module") || contentLower.contains("mmwmodule") ||
+            contentLower.contains("ticket tool") || contentLower.contains("tickettool")) {
+            log.info("🎯 Project found by keyword matching: MMW_MODULE_TICKET_TOOL");
+            return Project.MMW_MODULE_TICKET_TOOL;
+        }
+        
+        // CK Trends
+        if (contentLower.contains("ck trends") || contentLower.contains("cktrends")) {
+            log.info("🎯 Project found by keyword matching: CK_TRENDS");
+            return Project.CK_TRENDS;
+        }
+        
+        // Livewire
+        if (contentLower.contains("livewire")) {
+            log.info("🎯 Project found by keyword matching: LIVEWIRE");
+            return Project.LIVEWIRE;
+        }
+        
+        // Meeting Agenda
+        if (contentLower.contains("meeting agenda") || contentLower.contains("meetingagenda")) {
+            log.info("🎯 Project found by keyword matching: MEETING_AGENDA");
+            return Project.MEETING_AGENDA;
+        }
+        
+        // Pro Hire
+        if (contentLower.contains("pro hire") || contentLower.contains("prohire")) {
+            log.info("🎯 Project found by keyword matching: PRO_HIRE");
+            return Project.PRO_HIRE;
+        }
+        
+        // E-Capex
+        if (contentLower.contains("e-capex") || contentLower.contains("ecapex") || 
+            contentLower.contains("e capex") || contentLower.contains("capex")) {
+            log.info("🎯 Project found by keyword matching: E_CAPEX");
+            return Project.E_CAPEX;
+        }
+        
+        // SOP
+        if (contentLower.contains("sop") || contentLower.contains("standard operating procedure")) {
+            log.info("🎯 Project found by keyword matching: SOP");
+            return Project.SOP;
+        }
+        
+        // Asset Management (including common misspelling)
+        if (contentLower.contains("asset management") || contentLower.contains("assetmanagement") ||
+            contentLower.contains("assert management") || contentLower.contains("assertmanagement")) {
+            log.info("🎯 Project found by keyword matching: ASSET_MANAGEMENT");
+            return Project.ASSET_MANAGEMENT;
+        }
+        
+        // Mould Mamp
+        if (contentLower.contains("mould mamp") || contentLower.contains("mouldmamp")) {
+            log.info("🎯 Project found by keyword matching: MOULD_MAMP");
+            return Project.MOULD_MAMP;
+        }
+        
+        // E-Library
+        if (contentLower.contains("e-library") || contentLower.contains("elibrary") || 
+            contentLower.contains("e library")) {
+            log.info("🎯 Project found by keyword matching: E_LIBRARY");
+            return Project.E_LIBRARY;
+        }
+        
+        // Outlet Approval
+        if (contentLower.contains("outlet_approval") || contentLower.contains("outlet approval") ||
+            contentLower.contains("outletapproval")) {
+            log.info("🎯 Project found by keyword matching: OUTLET_APPROVAL");
+            return Project.OUTLET_APPROVAL;
+        }
+        
+        // RA Tool
+        if (contentLower.contains("ra_tool") || contentLower.contains("ra tool") ||
+            contentLower.contains("ratool")) {
+            log.info("🎯 Project found by keyword matching: RA_TOOL");
+            return Project.RA_TOOL;
+        }
+        
+        // CK Bakery
+        if (contentLower.contains("ck_bakery") || contentLower.contains("ck bakery") ||
+            contentLower.contains("ckbakery")) {
+            log.info("🎯 Project found by keyword matching: CK_BAKERY");
+            return Project.CK_BAKERY;
+        }
+        
+        // I-View
+        if (contentLower.contains("i-view") || contentLower.contains("iview") || 
+            contentLower.contains("i view")) {
+            log.info("🎯 Project found by keyword matching: I_VIEW");
+            return Project.I_VIEW;
+        }
+        
+        // CKPL
+        if (contentLower.contains("ckpl")) {
+            log.info("🎯 Project found by keyword matching: CKPL");
+            return Project.CKPL;
+        }
+        
+        // CavinKare
+        if (contentLower.contains("cavinkare") || contentLower.contains("cavin kare")) {
+            log.info("🎯 Project found by keyword matching: CAVINKARE");
+            return Project.CAVINKARE;
+        }
+        
+        // HRSS
+        if (contentLower.contains("hrss") || contentLower.contains("hr")) {
+            log.info("🎯 Project found by keyword matching: HRSS");
+            return Project.HRSS;
+        }
+        
+        log.info("🎯 No specific project found, using default: GENERAL");
+        return Project.GENERAL; // Default project
     }
 
     // Determine priority from email content
@@ -557,5 +720,127 @@ public class TicketParserServiceImpl implements TicketParserService {
                 return Status.OPENED; // Default
             }
         }
+    }
+
+    // Extract sent date from email headers
+    private LocalDate extractSentDate(String emailContent) {
+        log.debug("🔍 Extracting sent date from email content");
+        
+        // Try to find Sent header first (most common in your emails)
+        Pattern sentPattern = Pattern.compile("(?i)sent:\\s*([^\\n\\r]+)", Pattern.MULTILINE);
+        Matcher sentMatcher = sentPattern.matcher(emailContent);
+        
+        String dateString = null;
+        if (sentMatcher.find()) {
+            dateString = sentMatcher.group(1).trim();
+            log.debug("📅 Found Sent date: '{}'", dateString);
+        } else {
+            // Try to find Date header as fallback
+            Pattern datePattern = Pattern.compile("(?i)date:\\s*([^\\n\\r]+)", Pattern.MULTILINE);
+            Matcher dateMatcher = datePattern.matcher(emailContent);
+            if (dateMatcher.find()) {
+                dateString = dateMatcher.group(1).trim();
+                log.debug("📅 Found Date header: '{}'", dateString);
+            }
+        }
+        
+        if (dateString != null && !dateString.isEmpty()) {
+            LocalDate parsedDate = parseDateString(dateString);
+            if (parsedDate != null) {
+                log.info("✅ Successfully extracted date: {}", parsedDate);
+                return parsedDate;
+            }
+        }
+        
+        log.warn("⚠️ No date found in email headers, using today's date");
+        return LocalDate.now();
+    }
+    
+    // Parse date string to LocalDate
+    private LocalDate parseDateString(String dateString) {
+        if (dateString == null || dateString.trim().isEmpty()) {
+            log.warn("⚠️ Empty date string provided");
+            return null;
+        }
+        
+        dateString = dateString.trim();
+        log.debug("🔍 Parsing date string: '{}'", dateString);
+        
+        // Define various date formats that might be encountered in emails
+        DateTimeFormatter[] formatters = {
+            // "12 July 2025 10:26" - Your specific format from sample
+            DateTimeFormatter.ofPattern("d MMMM yyyy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH),
+            
+            // "Friday, July 11, 2025 1:14 PM" - Your other specific format
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy h:mm a", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH),
+            
+            // "Friday, July 11, 2025 13:14" - 24 hour format variation
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy HH:mm", Locale.ENGLISH),
+            
+            // "July 11, 2025 1:14 PM" - without day name
+            DateTimeFormatter.ofPattern("MMMM d, yyyy h:mm a", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH),
+            
+            // "15 Jul 2025 15:21" or "15 Jul 2025" - abbreviated month
+            DateTimeFormatter.ofPattern("d MMM yyyy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH),
+            
+            // "July 15, 2025 15:21" or "July 15, 2025"
+            DateTimeFormatter.ofPattern("MMMM d, yyyy HH:mm", Locale.ENGLISH),
+            
+            // "Jul 15, 2025 15:21" or "Jul 15, 2025"
+            DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
+            
+            // "2025-07-15 15:21" or "2025-07-15"
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+            
+            // "15/07/2025 15:21" or "15/07/2025"
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            
+            // "07/15/2025 15:21" or "07/15/2025" (US format)
+            DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm"),
+            DateTimeFormatter.ofPattern("MM/dd/yyyy"),
+            
+            // RFC 2822 format: "Mon, 15 Jul 2025 15:21:00 +0000"
+            new DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendOptional(DateTimeFormatter.ofPattern("EEE, ", Locale.ENGLISH))
+                .appendPattern("d MMM yyyy HH:mm:ss")
+                .appendOptional(DateTimeFormatter.ofPattern(" Z"))
+                .toFormatter(Locale.ENGLISH)
+        };
+        
+        // Try each formatter
+        for (int i = 0; i < formatters.length; i++) {
+            DateTimeFormatter formatter = formatters[i];
+            try {
+                LocalDate parsedDate = LocalDate.parse(dateString, formatter);
+                log.debug("✅ Successfully parsed date '{}' using formatter {}: {}", dateString, formatter);
+                return parsedDate;
+            } catch (DateTimeParseException e) {
+                log.debug("❌ Formatter {} failed for '{}': {}", i, dateString, e.getMessage());
+                continue;
+            }
+        }
+        
+        // If no formatter worked, try to extract just the date part using regex
+        Pattern dateOnlyPattern = Pattern.compile("(\\d{1,2}\\s+\\w+\\s+\\d{4}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}/\\d{4})");
+        Matcher dateOnlyMatcher = dateOnlyPattern.matcher(dateString);
+        if (dateOnlyMatcher.find()) {
+            String dateOnly = dateOnlyMatcher.group(1);
+            log.debug("🔍 Extracted date part: '{}' from '{}'", dateOnly, dateString);
+            // Avoid infinite recursion by checking if we're extracting the same string
+            if (!dateOnly.equals(dateString)) {
+                return parseDateString(dateOnly); // Recursive call with just the date part
+            }
+        }
+        
+        log.warn("⚠️ Failed to parse date string: '{}' with all available formatters", dateString);
+        return null;
     }
 }

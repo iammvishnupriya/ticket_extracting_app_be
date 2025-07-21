@@ -9,7 +9,7 @@ public enum Project {
     CK_ALUMNI("CK Alumni"),
     HEPL_ALUMNI("HEPL Alumni"),
     HEPL_PORTAL("HEPL Portal"),
-    MMW_MODULE_TICKET_TOOL("MMW Module (Ticket Tool)"),
+    MMW_MODULE_TICKET_TOOL("MMW Module(Ticket tool)"),
     CK_TRENDS("CK Trends"),
     LIVEWIRE("Livewire"),
     MEETING_AGENDA("Meeting Agenda"),
@@ -18,6 +18,14 @@ public enum Project {
     SOP("SOP"),
     ASSET_MANAGEMENT("Asset Management"),
     MOULD_MAMP("Mould Mamp"),
+    E_LIBRARY("E-Library"),
+    OUTLET_APPROVAL("Outlet_Approval"),
+    RA_TOOL("RA_Tool"),
+    CK_BAKERY("CK_Bakery"),
+    I_VIEW("I-View"),
+    CKPL("CKPL"),
+    CAVINKARE("CavinKare"),
+    HRSS("HRSS"),
     GENERAL("General");
 
     private final String displayName;
@@ -37,7 +45,21 @@ public enum Project {
             return GENERAL;
         }
         
-        // Normalize the input string
+        // First try to match by enum constant name (for database compatibility)
+        try {
+            return Project.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            // If that fails, try by display name
+        }
+        
+        // Try exact display name match first
+        for (Project project : Project.values()) {
+            if (project.displayName.equals(value.trim())) {
+                return project;
+            }
+        }
+        
+        // Normalize the input string for fuzzy matching
         String normalized = value.trim().toLowerCase()
             .replaceAll("[^a-z0-9\\s]", "") // Remove special characters except spaces
             .replaceAll("\\s+", " "); // Replace multiple spaces with single space
@@ -101,6 +123,34 @@ public enum Project {
             case "mould mamp":
             case "mouldmamp":
                 return MOULD_MAMP;
+            case "e library":
+            case "elibrary":
+            case "e-library":
+                return E_LIBRARY;
+            case "outlet approval":
+            case "outletapproval":
+            case "outlet_approval":
+                return OUTLET_APPROVAL;
+            case "ra tool":
+            case "ratool":
+            case "ra_tool":
+                return RA_TOOL;
+            case "ck bakery":
+            case "ckbakery":
+            case "ck_bakery":
+                return CK_BAKERY;
+            case "i view":
+            case "iview":
+            case "i-view":
+                return I_VIEW;
+            case "ckpl":
+                return CKPL;
+            case "cavinkare":
+            case "cavin kare":
+                return CAVINKARE;
+            case "hrss":
+            case "hr":
+                return HRSS;
             default:
                 return GENERAL;
         }

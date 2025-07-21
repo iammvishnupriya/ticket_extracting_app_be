@@ -25,7 +25,7 @@ public class ConsolidateServiceImpl implements ConsolidateService {
         // Group tickets by project
         Map<String, List<Ticket>> ticketsByProject = allTickets.stream()
             .collect(Collectors.groupingBy(
-                ticket -> ticket.getProject() != null ? ticket.getProject() : "Unknown"
+                ticket -> ticket.getProject() != null ? ticket.getProject().getDisplayName() : "Unknown"
             ));
         
         // Create consolidated response for each project
