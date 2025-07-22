@@ -1,0 +1,18 @@
+From: Software Support <SoftwareSupport@hepl.com>
+Sent: Friday, January 15, 2025 2:30 PM
+To: Arun Prasad S/IT/HEPL <arun.se@hepl.com>
+Cc: Ganagavathy K G V/IT/HEPL <ganaga.v@hepl.com>; Kaviya M/IT/HEPL <kaviya.m@hepl.com>
+Subject: Urgnt: CK Alumi portal isue - enhancment needed
+
+Dear Arun,
+
+We have an urgnt isue with the CK Alumi portal that needs immedaite attention. The system is showing erors when users try to access their profiles.
+
+This is a critcal bug that affects all users and requires an enhancment to fix the underlying problm. The impact is high priorit as it's blocking user access.
+
+Please investigate this isue and provide a solution as soon as possible.
+
+Thanks and Regards,
+Prithika K
+Software Support
+04142 350036

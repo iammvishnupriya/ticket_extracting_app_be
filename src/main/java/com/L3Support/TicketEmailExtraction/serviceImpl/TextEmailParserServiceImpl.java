@@ -13,6 +13,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.text.similarity.JaroWinklerSimilarity;
+import org.apache.commons.text.similarity.LevenshteinDistance;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +37,20 @@ import lombok.extern.slf4j.Slf4j;
 public class TextEmailParserServiceImpl implements TextEmailParserService {
 
     private final ContributorService contributorService;
+    
+    // Fuzzy matching utilities
+    private final JaroWinklerSimilarity jaroWinklerSimilarity = new JaroWinklerSimilarity();
+    private final LevenshteinDistance levenshteinDistance = new LevenshteinDistance();
+    
+    // Configurable fuzzy matching thresholds
+    @Value("${app.fuzzy.project.similarity.threshold:0.75}")
+    private double projectSimilarityThreshold;
+    
+    @Value("${app.fuzzy.priority.similarity.threshold:0.80}")
+    private double prioritySimilarityThreshold;
+    
+    @Value("${app.fuzzy.enable.logging:true}")
+    private boolean enableFuzzyLogging;
 
     public TextEmailParserServiceImpl(ContributorService contributorService) {
         this.contributorService = contributorService;
@@ -167,42 +184,51 @@ public class TextEmailParserServiceImpl implements TextEmailParserService {
         return null;
     }
 
-    // Extract sent date from email headers
+    // Extract sent date from email headers - Enhanced for multiple formats
     private LocalDate extractSentDate(String emailContent) {
         log.info("🔍 Extracting sent date from email content...");
         log.info("📧 Email content preview: {}", emailContent.length() > 500 ? emailContent.substring(0, 500) + "..." : emailContent);
         
-        // Check if "Sent:" exists in the content at all
-        if (emailContent.toLowerCase().contains("sent:")) {
-            log.info("✅ 'Sent:' found in email content");
-        } else {
-            log.warn("❌ 'Sent:' NOT found in email content");
-        }
-        
-        // Try to find Sent header first (most common in your emails)
-        Pattern sentPattern = Pattern.compile("(?i)sent:\\s*(.+?)(?=\\n|$)", Pattern.MULTILINE);
-        Matcher sentMatcher = sentPattern.matcher(emailContent);
+        // Enhanced patterns to handle various "Sent:" formats
+        String[] sentPatterns = {
+            "(?i)sent:\\s*(.+?)(?=\\n|$)",           // Standard: "Sent: date"
+            "(?i)sent on:\\s*(.+?)(?=\\n|$)",       // "Sent on: date"  
+            "(?i)sent date:\\s*(.+?)(?=\\n|$)",     // "Sent Date: date"
+            "(?i)receiveddate:\\s*(.+?)(?=\\n|$)",  // "ReceivedDate: date"
+            "(?i)received date:\\s*(.+?)(?=\\n|$)", // "Received Date: date"
+            "(?i)date sent:\\s*(.+?)(?=\\n|$)"      // "Date Sent: date"
+        };
         
         String dateString = null;
-        if (sentMatcher.find()) {
-            dateString = sentMatcher.group(1).trim();
-            log.info("📅 Found Sent date: '{}'", dateString);
-        } else {
-            log.warn("⚠️ No 'Sent:' header found, trying 'Date:' header");
-            // Try to find Date header as fallback
+        String matchedPattern = null;
+        
+        // Try each sent pattern
+        for (String patternStr : sentPatterns) {
+            Pattern pattern = Pattern.compile(patternStr, Pattern.MULTILINE);
+            Matcher matcher = pattern.matcher(emailContent);
+            if (matcher.find()) {
+                dateString = matcher.group(1).trim();
+                matchedPattern = patternStr;
+                log.info("📅 Found date using pattern '{}': '{}'", matchedPattern, dateString);
+                break;
+            }
+        }
+        
+        // Fallback to standard Date header if no Sent patterns found
+        if (dateString == null) {
+            log.warn("⚠️ No 'Sent:' variations found, trying 'Date:' header");
             Pattern datePattern = Pattern.compile("(?i)date:\\s*(.+?)(?=\\n|$)", Pattern.MULTILINE);
             Matcher dateMatcher = datePattern.matcher(emailContent);
             if (dateMatcher.find()) {
                 dateString = dateMatcher.group(1).trim();
+                matchedPattern = "date:";
                 log.info("📅 Found Date header: '{}'", dateString);
-            } else {
-                log.warn("⚠️ No 'Date:' header found either");
             }
         }
         
         if (dateString != null) {
             LocalDate parsedDate = parseDateString(dateString);
-            log.info("📅 Parsed date: {}", parsedDate);
+            log.info("📅 Successfully parsed date from '{}': {}", matchedPattern, parsedDate);
             return parsedDate;
         }
         
@@ -361,131 +387,269 @@ public class TextEmailParserServiceImpl implements TextEmailParserService {
         return description.length() > 0 ? description.toString() : "No description available";
     }
 
-    // Extract project from subject and body using Project enum
+    // Enhanced project extraction with fuzzy matching
     private Project extractProject(String subject, String body) {
         String content = (subject + " " + body).toLowerCase();
+        log.info("🔍 Extracting project from content: {}", content.length() > 200 ? content.substring(0, 200) + "..." : content);
         
-        // Check each project's display name and common variations in the content
+        Project bestMatch = null;
+        double bestSimilarity = 0.0;
+        String bestMatchedTerm = "";
+        
+        // Check each project with fuzzy matching
         for (Project project : Project.values()) {
             if (project == Project.GENERAL) continue; // Skip GENERAL, use as default
             
-            String displayName = project.getDisplayName().toLowerCase();
+            // Get all possible variations for this project
+            List<String> projectVariations = getProjectVariations(project);
             
-            // Check if the project name appears in the content
-            if (content.contains(displayName)) {
-                return project;
-            }
-            
-            // Check common variations and abbreviations
-            switch (project) {
-                case MATERIAL_RECEIPT:
-                    if (content.contains("material receipt") || content.contains("materialreceipt") ||
-                        content.contains("material reciept") || content.contains("materialreciept")) {
-                        return project;
-                    }
-                    break;
-                case MY_BUDDY:
-                    if (content.contains("my buddy") || content.contains("mybuddy")) {
-                        return project;
-                    }
-                    break;
-                case CK_ALUMNI:
-                    if (content.contains("ck alumni") || content.contains("ckalumni")) {
-                        return project;
-                    }
-                    break;
-                case HEPL_ALUMNI:
-                    if (content.contains("hepl alumni") || content.contains("heplalumni")) {
-                        return project;
-                    }
-                    break;
-                case HEPL_PORTAL:
-                    if (content.contains("hepl portal") || content.contains("heplportal")) {
-                        return project;
-                    }
-                    break;
-                case MMW_MODULE_TICKET_TOOL:
-                    if (content.contains("mmw module") || content.contains("mmwmodule") ||
-                        content.contains("ticket tool") || content.contains("tickettool")) {
-                        return project;
-                    }
-                    break;
-                case CK_TRENDS:
-                    if (content.contains("ck trends") || content.contains("cktrends")) {
-                        return project;
-                    }
-                    break;
-                case LIVEWIRE:
-                    if (content.contains("livewire")) {
-                        return project;
-                    }
-                    break;
-                case MEETING_AGENDA:
-                    if (content.contains("meeting agenda") || content.contains("meetingagenda")) {
-                        return project;
-                    }
-                    break;
-                case PRO_HIRE:
-                    if (content.contains("pro hire") || content.contains("prohire")) {
-                        return project;
-                    }
-                    break;
-                case E_CAPEX:
-                    if (content.contains("e-capex") || content.contains("ecapex") || content.contains("e capex")) {
-                        return project;
-                    }
-                    break;
-                case SOP:
-                    if (content.contains("sop") || content.contains("standard operating procedure")) {
-                        return project;
-                    }
-                    break;
-                case ASSET_MANAGEMENT:
-                    if (content.contains("asset management") || content.contains("assetmanagement") ||
-                        content.contains("assert management") || content.contains("assertmanagement")) {
-                        return project;
-                    }
-                    break;
-                case MOULD_MAMP:
-                    if (content.contains("mould mamp") || content.contains("mouldmamp")) {
-                        return project;
-                    }
-                    break;
+            for (String variation : projectVariations) {
+                double similarity = findBestSimilarityInContent(content, variation);
+                
+                if (similarity > projectSimilarityThreshold && similarity > bestSimilarity) {
+                    bestSimilarity = similarity;
+                    bestMatch = project;
+                    bestMatchedTerm = variation;
+                    log.info("🎯 Found better match: {} (similarity: {:.2f}) for variation: '{}'", 
+                            project.getDisplayName(), similarity, variation);
+                }
             }
         }
         
+        if (bestMatch != null) {
+            log.info("✅ Best project match: {} (similarity: {:.2f}) matched term: '{}'", 
+                    bestMatch.getDisplayName(), bestSimilarity, bestMatchedTerm);
+            return bestMatch;
+        }
+        
+        log.warn("⚠️ No project match found above threshold {:.2f}, using GENERAL", projectSimilarityThreshold);
         return Project.GENERAL; // Default if no project found
     }
-
-    // Extract priority from subject and body
-    private Priority extractPriority(String subject, String body) {
-        String content = (subject + " " + body).toLowerCase();
+    
+    // Get all possible variations for a project (including common typos and formats)
+    private List<String> getProjectVariations(Project project) {
+        List<String> variations = new ArrayList<>();
+        String displayName = project.getDisplayName().toLowerCase();
+        variations.add(displayName);
         
-        if (content.contains("critical") || content.contains("urgent") || 
-            content.contains("high priority") || content.contains("asap")) {
-            return Priority.HIGH;
-        } else if (content.contains("high") || content.contains("important")) {
-            return Priority.HIGH;
-        } else if (content.contains("low") || content.contains("minor")) {
-            return Priority.LOW;
-        } else {
-            return Priority.MODERATE; // Default priority
+        switch (project) {
+            case MATERIAL_RECEIPT:
+                variations.addAll(Arrays.asList(
+                    "material receipt", "materialreceipt", "material reciept", "materialreciept",
+                    "material-receipt", "material_receipt", "mat receipt", "matreceipt"
+                ));
+                break;
+            case MY_BUDDY:
+                variations.addAll(Arrays.asList(
+                    "my buddy", "mybuddy", "my-buddy", "my_buddy", "mybudy", "my budy"
+                ));
+                break;
+            case CK_ALUMNI:
+                variations.addAll(Arrays.asList(
+                    "ck alumni", "ckalumni", "ck-alumni", "ck_alumni", "c k alumni", "ckpl alumni",
+                    "ck alumini", "ckalumini", "ck alumi", "ckalumi"
+                ));
+                break;
+            case HEPL_ALUMNI:
+                variations.addAll(Arrays.asList(
+                    "hepl alumni", "heplalumni", "hepl-alumni", "hepl_alumni", "h e p l alumni",
+                    "hepl alumini", "heplalumini", "hepl alumi", "heplalumi"
+                ));
+                break;
+            case HEPL_PORTAL:
+                variations.addAll(Arrays.asList(
+                    "hepl portal", "heplportal", "hepl-portal", "hepl_portal", "h e p l portal",
+                    "hepl portl", "heplportl", "hepl protal", "heplprotal"
+                ));
+                break;
+            case MMW_MODULE_TICKET_TOOL:
+                variations.addAll(Arrays.asList(
+                    "mmw module", "mmwmodule", "mmw-module", "mmw_module",
+                    "ticket tool", "tickettool", "ticket-tool", "ticket_tool",
+                    "mmw ticket tool", "mmwticket tool", "mmw tickettool"
+                ));
+                break;
+            case CK_TRENDS:
+                variations.addAll(Arrays.asList(
+                    "ck trends", "cktrends", "ck-trends", "ck_trends", "c k trends",
+                    "ck trend", "cktrend", "ck trands", "cktrands"
+                ));
+                break;
+            case LIVEWIRE:
+                variations.addAll(Arrays.asList(
+                    "livewire", "live wire", "live-wire", "live_wire", "livwire", "livewir"
+                ));
+                break;
+            case MEETING_AGENDA:
+                variations.addAll(Arrays.asList(
+                    "meeting agenda", "meetingagenda", "meeting-agenda", "meeting_agenda",
+                    "meet agenda", "meetagenda", "meeting agend", "meetingagend"
+                ));
+                break;
+            case PRO_HIRE:
+                variations.addAll(Arrays.asList(
+                    "pro hire", "prohire", "pro-hire", "pro_hire", "prohir", "pro hir"
+                ));
+                break;
+            case E_CAPEX:
+                variations.addAll(Arrays.asList(
+                    "e-capex", "ecapex", "e capex", "e_capex", "e-capx", "ecapx", "e capx"
+                ));
+                break;
+            case SOP:
+                variations.addAll(Arrays.asList(
+                    "sop", "s o p", "s.o.p", "standard operating procedure", "standard op procedure"
+                ));
+                break;
+            case ASSET_MANAGEMENT:
+                variations.addAll(Arrays.asList(
+                    "asset management", "assetmanagement", "asset-management", "asset_management",
+                    "assert management", "assertmanagement", "asset mgmt", "assetmgmt",
+                    "asset managment", "assetmanagment"
+                ));
+                break;
+            case MOULD_MAMP:
+                variations.addAll(Arrays.asList(
+                    "mould mamp", "mouldmamp", "mould-mamp", "mould_mamp",
+                    "mold mamp", "moldmamp", "mould map", "mouldmap"
+                ));
+                break;
         }
+        
+        return variations;
+    }
+    
+    // Find the best similarity score for a term within the content
+    private double findBestSimilarityInContent(String content, String searchTerm) {
+        double bestSimilarity = 0.0;
+        
+        // Direct substring match (highest priority)
+        if (content.contains(searchTerm)) {
+            return 1.0; // Perfect match
+        }
+        
+        // Split content into words and check similarity with each word/phrase
+        String[] words = content.split("\\s+");
+        
+        // Check individual words
+        for (String word : words) {
+            double similarity = jaroWinklerSimilarity.apply(word, searchTerm);
+            bestSimilarity = Math.max(bestSimilarity, similarity);
+        }
+        
+        // Check word combinations (for multi-word search terms)
+        if (searchTerm.contains(" ")) {
+            String[] searchWords = searchTerm.split("\\s+");
+            for (int i = 0; i <= words.length - searchWords.length; i++) {
+                StringBuilder phrase = new StringBuilder();
+                for (int j = 0; j < searchWords.length; j++) {
+                    if (j > 0) phrase.append(" ");
+                    phrase.append(words[i + j]);
+                }
+                double similarity = jaroWinklerSimilarity.apply(phrase.toString(), searchTerm);
+                bestSimilarity = Math.max(bestSimilarity, similarity);
+            }
+        }
+        
+        return bestSimilarity;
     }
 
-    // Extract bug type from subject and body
+    // Enhanced priority extraction with fuzzy matching
+    private Priority extractPriority(String subject, String body) {
+        String content = (subject + " " + body).toLowerCase();
+        log.info("🔍 Extracting priority from content...");
+        
+        // Define priority keywords with variations
+        List<String> highPriorityTerms = Arrays.asList(
+            "critical", "urgent", "high priority", "asap", "emergency", "immediate",
+            "critcal", "urgnt", "high priorit", "a s a p", "emergenc", "immedaite"
+        );
+        
+        List<String> lowPriorityTerms = Arrays.asList(
+            "low", "minor", "low priority", "not urgent", "when possible",
+            "lo", "minr", "low priorit", "not urgnt", "wen possible"
+        );
+        
+        List<String> moderatePriorityTerms = Arrays.asList(
+            "medium", "moderate", "normal", "standard", "regular",
+            "medim", "moderat", "norml", "standar", "regulr"
+        );
+        
+        // Check for high priority with fuzzy matching
+        for (String term : highPriorityTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found HIGH priority match for term: '{}'", term);
+                return Priority.HIGH;
+            }
+        }
+        
+        // Check for low priority with fuzzy matching
+        for (String term : lowPriorityTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found LOW priority match for term: '{}'", term);
+                return Priority.LOW;
+            }
+        }
+        
+        // Check for moderate priority with fuzzy matching
+        for (String term : moderatePriorityTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found MODERATE priority match for term: '{}'", term);
+                return Priority.MODERATE;
+            }
+        }
+        
+        log.info("⚠️ No priority keywords found, using default MODERATE");
+        return Priority.MODERATE; // Default priority
+    }
+
+    // Enhanced bug type extraction with fuzzy matching
     private BugType extractBugType(String subject, String body) {
         String content = (subject + " " + body).toLowerCase();
+        log.info("🔍 Extracting bug type from content...");
         
-        if (content.contains("enhancement") || content.contains("feature") || 
-            content.contains("improvement") || content.contains("new feature")) {
-            return BugType.ENHANCEMENT;
-        } else if (content.contains("task") || content.contains("todo") || 
-                   content.contains("action item")) {
-            return BugType.TASK;
-        } else {
-            return BugType.BUG; // Default to bug
+        // Define bug type keywords with variations
+        List<String> enhancementTerms = Arrays.asList(
+            "enhancement", "feature", "improvement", "new feature", "upgrade", "optimize",
+            "enhancment", "featur", "improvment", "new featur", "upgrad", "optimiz"
+        );
+        
+        List<String> taskTerms = Arrays.asList(
+            "task", "todo", "action item", "work item", "activity", "assignment",
+            "tsk", "to do", "action itm", "work itm", "activit", "assignmnt"
+        );
+        
+        List<String> bugTerms = Arrays.asList(
+            "bug", "error", "issue", "problem", "defect", "fault", "failure",
+            "bg", "eror", "isue", "problm", "defct", "falt", "failur"
+        );
+        
+        // Check for enhancement with fuzzy matching
+        for (String term : enhancementTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found ENHANCEMENT match for term: '{}'", term);
+                return BugType.ENHANCEMENT;
+            }
         }
+        
+        // Check for task with fuzzy matching
+        for (String term : taskTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found TASK match for term: '{}'", term);
+                return BugType.TASK;
+            }
+        }
+        
+        // Check for bug with fuzzy matching
+        for (String term : bugTerms) {
+            if (findBestSimilarityInContent(content, term) > prioritySimilarityThreshold) {
+                log.info("✅ Found BUG match for term: '{}'", term);
+                return BugType.BUG;
+            }
+        }
+        
+        log.info("⚠️ No bug type keywords found, using default BUG");
+        return BugType.BUG; // Default to bug
     }
 
     // Extract impact from the middle portion of the email body
