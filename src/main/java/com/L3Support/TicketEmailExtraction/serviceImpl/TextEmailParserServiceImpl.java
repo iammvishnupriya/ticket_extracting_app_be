@@ -56,15 +56,8 @@ public class TextEmailParserServiceImpl implements TextEmailParserService {
         this.contributorService = contributorService;
     }
 
-    // L3 Support team email list from configuration (kept for fallback)
-    @Value("${app.l3.allowed.contributors}")
-    private String l3SupportTeamConfig;
-    
-    private List<String> getL3SupportTeam() {
-        List<String> team = Arrays.asList(l3SupportTeamConfig.split(","));
-        log.info("🔧 L3 Support team configured: {}", team);
-        return team;
-    }
+    // L3 Support team is now retrieved from database only
+    // Configuration-based approach removed - all contributors managed via database
 
     // Import Project enum for project extraction
     // Note: Project enum validation will be used instead of hardcoded list
@@ -799,81 +792,9 @@ public class TextEmailParserServiceImpl implements TextEmailParserService {
             return foundContributors.get(0);
         }
         
-        // Final fallback: use configuration-based approach
-        log.warn("⚠️ No database contributor found, falling back to configuration-based search");
-        return findContributorFromConfig(toEmails);
-    }
-
-    // Fallback method using configuration (for backward compatibility)
-    private Contributor findContributorFromConfig(String toEmails) {
-        List<String> foundContributorNames = new ArrayList<>();
-        String toEmailsLower = toEmails.toLowerCase();
-        
-        // Extract all email addresses from the toEmails string using regex
-        Pattern emailPattern = Pattern.compile("([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})");
-        Matcher emailMatcher = emailPattern.matcher(toEmailsLower);
-        
-        List<String> emailsInTo = new ArrayList<>();
-        while (emailMatcher.find()) {
-            emailsInTo.add(emailMatcher.group(1));
-        }
-        
-        // Check each L3 support team member against extracted emails
-        for (String teamMember : getL3SupportTeam()) {
-            String trimmedMember = teamMember.trim().toLowerCase();
-            if (emailsInTo.contains(trimmedMember)) {
-                foundContributorNames.add(teamMember.trim()); // Add original case
-                log.info("✅ Found contributor from config: {}", teamMember.trim());
-            }
-        }
-        
-        if (!foundContributorNames.isEmpty()) {
-            // If multiple contributors found, don't auto-assign
-            if (foundContributorNames.size() > 1) {
-                log.warn("⚠️ Multiple contributors found in config ({}), not auto-assigning. User should select manually.", 
-                    String.join(", ", foundContributorNames));
-                return null;
-            }
-            
-            // Try to find or create contributor in database
-            String contributorName = foundContributorNames.get(0); // Take first match
-            return findOrCreateContributorByName(contributorName);
-        }
-        
+        // No contributor found in database
+        log.warn("⚠️ No contributor found in database for emails: {}", emailsInTo);
         return null;
-    }
-
-    // Helper method to find or create contributor by name
-    private Contributor findOrCreateContributorByName(String name) {
-        try {
-            // Try to find existing contributor by name
-            List<Contributor> existingContributors = contributorService.searchContributorsByName(name)
-                    .stream()
-                    .map(response -> contributorService.getContributorEntityById(response.getId()))
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toList());
-            
-            if (!existingContributors.isEmpty()) {
-                return existingContributors.get(0);
-            }
-            
-            // Create new contributor if not found
-            log.info("🆕 Creating new contributor: {}", name);
-            ContributorRequest newContributorRequest = ContributorRequest.builder()
-                    .name(name)
-                    .active(true)
-                    .department("L3 Support")
-                    .notes("Auto-created from email parsing")
-                    .build();
-            
-            ContributorResponse created = contributorService.createContributor(newContributorRequest);
-            return contributorService.getContributorEntityById(created.getId()).orElse(null);
-            
-        } catch (Exception e) {
-            log.error("Error finding/creating contributor: {}", name, e);
-            return null;
-        }
     }
 
     // Extract ticket owner from sender email

@@ -45,6 +45,7 @@ public class Ticket {
     private LocalDate receivedDate;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 15)
     private Priority priority;
 
     @Column(length = 100)
@@ -64,9 +65,11 @@ public class Ticket {
     private String contributorName;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 20)
     private BugType bugType;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 15)
     private Status status;
 
     @Column(length = 1000)

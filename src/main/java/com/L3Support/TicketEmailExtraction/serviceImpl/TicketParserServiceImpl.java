@@ -9,18 +9,23 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.L3Support.TicketEmailExtraction.enums.Project;
 import com.L3Support.TicketEmailExtraction.model.BugType;
+import com.L3Support.TicketEmailExtraction.model.Contributor;
 import com.L3Support.TicketEmailExtraction.model.Priority;
 import com.L3Support.TicketEmailExtraction.model.Status;
 import com.L3Support.TicketEmailExtraction.model.Ticket;
+import com.L3Support.TicketEmailExtraction.service.ContributorService;
 import com.L3Support.TicketEmailExtraction.service.TicketParserService;
+import com.L3Support.TicketEmailExtraction.utils.CommonConstant;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,41 +33,17 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class TicketParserServiceImpl implements TicketParserService {
 
-    // L3 Support team email list from configuration
-    @Value("${app.l3.allowed.contributors}")
-    private String l3SupportTeamConfig;
-    
-    private List<String> getL3SupportTeam() {
-        List<String> team = Arrays.asList(l3SupportTeamConfig.split(","));
-        log.info("🔧 L3 Support team configured: {}", team);
-        return team;
+    private final ContributorService contributorService;
+
+    public TicketParserServiceImpl(ContributorService contributorService) {
+        this.contributorService = contributorService;
     }
 
-    // Complete project list as provided
-    private final List<String> validProjects = Arrays.asList(
-        "Material Receipt",
-        "My Buddy", 
-        "CK Alumni",
-        "HEPL Alumni",
-        "MMW Module(Ticket tool)",
-        "CK Trends",
-        "Livewire",
-        "Meeting Agenda",
-        "Pro Hire",
-        "E-Capex",
-        "SOP",
-        "Asset Management",
-        "Mould Mamp",
-        "E-Library",
-        "Outlet_Approval",
-        "RA_Tool",
-        "CK_Bakery",
-        "I-View",
-        "CKPL",
-        "CavinKare",
-        "HRSS",
-        "HEPL"
-    );
+    // L3 Support team is now retrieved from database only
+    // Configuration-based approach removed - all contributors managed via database
+
+    // Project list now sourced from CommonConstant
+    private final List<String> validProjects = CommonConstant.L3_ALLOWED_PROJECTS;
 
     @Override
     public Ticket parseEmailToTicket(String content) {
@@ -539,18 +520,15 @@ public class TicketParserServiceImpl implements TicketParserService {
         return BugType.BUG; // Default to bug
     }
 
-    // Find all contributors from L3 support team
+    // Find all contributors from database
     private String findContributor(String toEmails) {
         if (toEmails == null) return null;
-        
-        List<String> foundContributors = new ArrayList<>();
-        String toEmailsLower = toEmails.toLowerCase();
         
         log.info("🔍 Searching for contributors in: {}", toEmails);
         
         // Extract all email addresses from the toEmails string using regex
         Pattern emailPattern = Pattern.compile("([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})");
-        Matcher emailMatcher = emailPattern.matcher(toEmailsLower);
+        Matcher emailMatcher = emailPattern.matcher(toEmails.toLowerCase());
         
         List<String> emailsInTo = new ArrayList<>();
         while (emailMatcher.find()) {
@@ -559,19 +537,53 @@ public class TicketParserServiceImpl implements TicketParserService {
         
         log.info("📧 Extracted emails from TO field: {}", emailsInTo);
         
-        // Check each L3 support team member against extracted emails
-        for (String teamMember : getL3SupportTeam()) {
-            String trimmedMember = teamMember.trim().toLowerCase();
-            if (emailsInTo.contains(trimmedMember)) {
-                foundContributors.add(teamMember.trim()); // Add original case
-                log.info("✅ Found contributor: {}", teamMember.trim());
+        // Get all active contributors from database
+        List<Contributor> activeContributors = contributorService.getActiveContributors()
+                .stream()
+                .map(response -> contributorService.getContributorEntityById(response.getId()))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList());
+        
+        log.info("👥 Found {} active contributors in database", activeContributors.size());
+        
+        List<String> foundContributorNames = new ArrayList<>();
+        
+        // Find matching contributors by email
+        for (Contributor contributor : activeContributors) {
+            if (contributor.getEmail() != null) {
+                String contributorEmail = contributor.getEmail().toLowerCase();
+                if (emailsInTo.contains(contributorEmail)) {
+                    log.info("✅ Found matching contributor: {} ({})", contributor.getName(), contributor.getEmail());
+                    foundContributorNames.add(contributor.getName());
+                }
             }
         }
         
-        log.info("📋 Total contributors found: {}", foundContributors.size());
+        // If no email matches, try to match by name pattern
+        if (foundContributorNames.isEmpty()) {
+            for (Contributor contributor : activeContributors) {
+                String contributorName = contributor.getName().toLowerCase();
+                for (String email : emailsInTo) {
+                    if (email.contains(contributorName.replace(" ", ".")) || 
+                        email.contains(contributorName.replace(" ", ""))) {
+                        log.info("✅ Found contributor by name pattern: {} ({})", contributor.getName(), email);
+                        foundContributorNames.add(contributor.getName());
+                        break; // Avoid duplicates for same contributor
+                    }
+                }
+            }
+        }
+        
+        log.info("📋 Total contributors found: {}", foundContributorNames.size());
+        
+        if (foundContributorNames.isEmpty()) {
+            log.warn("⚠️ No contributor found in database for emails: {}", emailsInTo);
+            return null;
+        }
         
         // Return all contributors as comma-separated string
-        return foundContributors.isEmpty() ? null : String.join(",", foundContributors);
+        return String.join(",", foundContributorNames);
     }
 
     // Extract ticket owner from sender email

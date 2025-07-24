@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import com.L3Support.TicketEmailExtraction.utils.CommonConstant;
 
 @Component
 @ConfigurationProperties(prefix = "app.email")
@@ -13,7 +14,7 @@ public class EmailProperties {
     
     private Fetch fetch = new Fetch();
     private List<String> allowedSenders;
-    private List<String> allowedProjects;
+    private List<String> allowedProjects = CommonConstant.L3_ALLOWED_PROJECTS;
     private Filter filter = new Filter();
     
     @Data

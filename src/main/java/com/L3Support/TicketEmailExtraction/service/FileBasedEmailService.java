@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.L3Support.TicketEmailExtraction.model.Ticket;
 import com.L3Support.TicketEmailExtraction.repository.TicketRepository;
+import com.L3Support.TicketEmailExtraction.utils.CommonConstant;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,8 +36,7 @@ public class FileBasedEmailService {
     @Value("${app.email.error.folder:./emails/error}")
     private String errorFolderPath;
 
-    @Value("${app.l3.allowed.projects:CK_Alumni,CKPL,HEPL}")
-    private List<String> allowedProjects;
+    private final List<String> allowedProjects = CommonConstant.L3_ALLOWED_PROJECTS;
 
     @Value("${app.processing.auto.move.files:true}")
     private boolean autoMoveFiles;
