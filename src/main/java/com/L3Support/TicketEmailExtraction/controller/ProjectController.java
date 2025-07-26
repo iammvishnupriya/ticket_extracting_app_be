@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.L3Support.TicketEmailExtraction.enums.Project;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 @RestController
 @RequestMapping("/api/projects")
 @CrossOrigin(origins = {
@@ -23,8 +26,10 @@ import com.L3Support.TicketEmailExtraction.enums.Project;
     "http://127.0.0.1:4200",
     "http://127.0.0.1:5173"
 })
+@Tag(name = "Projects", description = "Project enumeration operations")
 public class ProjectController {
 
+    @Operation(summary = "Get all projects", description = "Returns a list of all available projects")
     @GetMapping
     public List<String> getAllProjects() {
         return Arrays.stream(Project.values())

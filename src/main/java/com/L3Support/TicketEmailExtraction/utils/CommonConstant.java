@@ -35,7 +35,9 @@ public final class CommonConstant {
         "Outlet_Approval",
         "RA_Tool",
         "CK_Bakery",
-        "I-View"
+        "I-View",
+        "FormBuilder",
+        "CK_Ticketing_tool"
     );
     
     /**

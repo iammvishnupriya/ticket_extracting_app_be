@@ -1,6 +1,7 @@
 package com.L3Support.TicketEmailExtraction.model;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -51,6 +52,7 @@ public class Ticket {
     @Column(length = 100)
     private String ticketOwner;
     
+    // Legacy single contributor support (kept for backward compatibility)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contributor_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
@@ -63,6 +65,14 @@ public class Ticket {
     // Keep the old contributor field for backward compatibility during migration
     @Column(length = 500)
     private String contributorName;
+
+    // Multiple contributors stored as comma-separated contributor IDs
+    @Column(length = 1000)
+    private String contributorIds;
+
+    // Transient field to accept list of contributor IDs from frontend
+    @jakarta.persistence.Transient
+    private List<Long> contributorIdsList;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)

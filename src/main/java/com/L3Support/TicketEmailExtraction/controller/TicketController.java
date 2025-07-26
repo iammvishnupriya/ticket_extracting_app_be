@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.L3Support.TicketEmailExtraction.model.Contributor;
 import com.L3Support.TicketEmailExtraction.model.Ticket;
 import com.L3Support.TicketEmailExtraction.model.TicketEditRequest;
 import com.L3Support.TicketEmailExtraction.model.TicketResponse;
@@ -22,6 +22,7 @@ import com.L3Support.TicketEmailExtraction.service.TicketService;
 import com.L3Support.TicketEmailExtraction.service.TicketContributorService;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 })
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Tickets", description = "Ticket management operations")
 public class TicketController {
 
     private final TicketService ticketService;
@@ -151,15 +153,15 @@ public class TicketController {
         }
     }
 
-    // ==================== Ticket-Contributor Relationship Endpoints ====================
+    // ==================== Legacy Single Contributor Support (Backward Compatibility) ====================
 
-    @Operation(summary = "👤 Assign contributor to ticket by ID")
+    @Operation(summary = "👤 Assign single contributor to ticket by ID (Legacy)")
     @PutMapping("/{ticketId}/contributor/{contributorId}")
-    public ResponseEntity<String> assignContributorToTicket(
+    public ResponseEntity<String> assignSingleContributorToTicket(
             @PathVariable Long ticketId, 
             @PathVariable Long contributorId) {
         try {
-            ticketContributorService.assignContributorToTicket(ticketId, contributorId);
+            ticketContributorService.addContributorToTicket(ticketId, contributorId);
             return ResponseEntity.ok("Contributor assigned successfully");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -168,44 +170,137 @@ public class TicketController {
         }
     }
 
-    @Operation(summary = "👤 Assign contributor to ticket by name")
-    @PutMapping("/{ticketId}/contributor")
-    public ResponseEntity<String> assignContributorToTicketByName(
-            @PathVariable Long ticketId, 
-            @RequestParam String contributorName) {
-        try {
-            ticketContributorService.assignContributorToTicketByName(ticketId, contributorName);
-            return ResponseEntity.ok("Contributor assigned successfully");
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error assigning contributor");
-        }
-    }
-
-    @Operation(summary = "🚫 Remove contributor from ticket")
+    @Operation(summary = "🚫 Remove all contributors from ticket (Legacy)")
     @DeleteMapping("/{ticketId}/contributor")
-    public ResponseEntity<String> removeContributorFromTicket(@PathVariable Long ticketId) {
+    public ResponseEntity<String> removeAllContributorsLegacy(@PathVariable Long ticketId) {
         try {
-            ticketContributorService.removeContributorFromTicket(ticketId);
-            return ResponseEntity.ok("Contributor removed successfully");
+            ticketContributorService.removeAllContributorsFromTicket(ticketId);
+            return ResponseEntity.ok("Contributors removed successfully");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error removing contributors");
+        }
+    }
+
+    @Operation(summary = "📋 Get contributor names for ticket (Legacy)")
+    @GetMapping("/{ticketId}/contributor")
+    public ResponseEntity<List<String>> getContributorNamesForTicket(@PathVariable Long ticketId) {
+        try {
+            List<String> contributorNames = ticketContributorService.getContributorNamesForTicket(ticketId);
+            return ResponseEntity.ok(contributorNames);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // ==================== Multiple Contributors Support ====================
+
+    @Operation(summary = "👥 Add multiple contributors to ticket")
+    @PostMapping("/{ticketId}/contributors")
+    public ResponseEntity<String> addContributorsToTicket(
+            @PathVariable Long ticketId, 
+            @RequestBody List<Long> contributorIds) {
+        try {
+            ticketContributorService.addContributorsToTicket(ticketId, contributorIds);
+            return ResponseEntity.ok("Contributors added successfully");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error adding contributors");
+        }
+    }
+
+    @Operation(summary = "👤 Add single contributor to ticket")
+    @PostMapping("/{ticketId}/contributors/{contributorId}")
+    public ResponseEntity<String> addSingleContributorToTicket(
+            @PathVariable Long ticketId, 
+            @PathVariable Long contributorId) {
+        try {
+            ticketContributorService.addContributorToTicket(ticketId, contributorId);
+            return ResponseEntity.ok("Contributor added successfully");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error adding contributor");
+        }
+    }
+
+    @Operation(summary = "🔄 Replace all contributors for ticket")
+    @PutMapping("/{ticketId}/contributors")
+    public ResponseEntity<String> replaceContributorsForTicket(
+            @PathVariable Long ticketId, 
+            @RequestBody List<Long> contributorIds) {
+        try {
+            ticketContributorService.replaceContributorsForTicket(ticketId, contributorIds);
+            return ResponseEntity.ok("Contributors replaced successfully");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error replacing contributors");
+        }
+    }
+
+    @Operation(summary = "🗑️ Remove specific contributor from ticket")
+    @DeleteMapping("/{ticketId}/contributors/{contributorId}")
+    public ResponseEntity<String> removeSpecificContributorFromTicket(
+            @PathVariable Long ticketId, 
+            @PathVariable Long contributorId) {
+        try {
+            ticketContributorService.removeContributorFromTicket(ticketId, contributorId);
+            return ResponseEntity.ok("Contributor removed successfully");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error removing contributor");
         }
     }
 
-    @Operation(summary = "📋 Get contributor name for ticket")
-    @GetMapping("/{ticketId}/contributor")
-    public ResponseEntity<String> getContributorForTicket(@PathVariable Long ticketId) {
+    @Operation(summary = "🗑️ Remove all contributors from ticket")
+    @DeleteMapping("/{ticketId}/contributors")
+    public ResponseEntity<String> removeAllContributorsFromTicket(@PathVariable Long ticketId) {
         try {
-            String contributorName = ticketContributorService.getContributorNameForTicket(ticketId);
-            return ResponseEntity.ok(contributorName);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            ticketContributorService.removeAllContributorsFromTicket(ticketId);
+            return ResponseEntity.ok("All contributors removed successfully");
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error fetching contributor");
+            return ResponseEntity.internalServerError().body("Error removing contributors");
+        }
+    }
+
+    @Operation(summary = "📋 Get all contributors for ticket")
+    @GetMapping("/{ticketId}/contributors")
+    public ResponseEntity<List<Contributor>> getContributorsForTicket(@PathVariable Long ticketId) {
+        try {
+            List<Contributor> contributors = ticketContributorService.getContributorsForTicket(ticketId);
+            return ResponseEntity.ok(contributors);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @Operation(summary = "📊 Get contributor count for ticket")
+    @GetMapping("/{ticketId}/contributors/count")
+    public ResponseEntity<Long> getContributorCountForTicket(@PathVariable Long ticketId) {
+        try {
+            long count = ticketContributorService.countContributorsForTicket(ticketId);
+            return ResponseEntity.ok(count);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @Operation(summary = "🔍 Check if contributor is assigned to ticket")
+    @GetMapping("/{ticketId}/contributors/{contributorId}/exists")
+    public ResponseEntity<Boolean> isContributorAssignedToTicket(
+            @PathVariable Long ticketId, 
+            @PathVariable Long contributorId) {
+        try {
+            boolean exists = ticketContributorService.isContributorAssignedToTicket(ticketId, contributorId);
+            return ResponseEntity.ok(exists);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 

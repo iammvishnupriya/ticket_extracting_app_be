@@ -23,9 +23,8 @@ public enum Project {
     RA_TOOL("RA_Tool"),
     CK_BAKERY("CK_Bakery"),
     I_VIEW("I-View"),
-    CKPL("CKPL"),
-    CAVINKARE("CavinKare"),
-    HRSS("HRSS"),
+    FORM_BUILDER("FormBuilder"),
+    CK_TICKETING_TOOL("CK_Ticketing_tool"),
     GENERAL("General");
 
     private final String displayName;
@@ -143,14 +142,16 @@ public enum Project {
             case "iview":
             case "i-view":
                 return I_VIEW;
-            case "ckpl":
-                return CKPL;
-            case "cavinkare":
-            case "cavin kare":
-                return CAVINKARE;
-            case "hrss":
-            case "hr":
-                return HRSS;
+            case "form builder":
+            case "formbuilder":
+                return FORM_BUILDER;
+            case "ck ticketing tool":
+            case "cktickettool":
+            case "ck_ticketing_tool":
+            case "ticketing tool":
+            case "ticketingtool":
+                return CK_TICKETING_TOOL;
+
             default:
                 return GENERAL;
         }

@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.L3Support.TicketEmailExtraction.model.ContributorRequest;
 import com.L3Support.TicketEmailExtraction.model.ContributorResponse;
+import com.L3Support.TicketEmailExtraction.model.Ticket;
 import com.L3Support.TicketEmailExtraction.service.ContributorService;
+import com.L3Support.TicketEmailExtraction.service.TicketContributorService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -48,6 +50,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ContributorController {
 
     private final ContributorService contributorService;
+    private final TicketContributorService ticketContributorService;
 
     @Operation(summary = "👥 Get all contributors")
     @ApiResponses(value = {
@@ -328,6 +331,50 @@ public class ContributorController {
             return ResponseEntity.ok(exists);
         } catch (Exception e) {
             log.error("Error checking employee ID existence: {}", employeeId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ==================== Contributor-Ticket Relationship Endpoints ====================
+
+    @Operation(summary = "🎫 Get all tickets assigned to contributor")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved tickets for contributor"),
+        @ApiResponse(responseCode = "404", description = "Contributor not found"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    @GetMapping("/{contributorId}/tickets")
+    public ResponseEntity<List<Ticket>> getTicketsForContributor(
+            @Parameter(description = "Contributor ID") @PathVariable Long contributorId) {
+        log.info("GET /api/contributors/{}/tickets - Fetching tickets for contributor", contributorId);
+        try {
+            List<Ticket> tickets = ticketContributorService.getTicketsForContributor(contributorId);
+            log.info("Found {} tickets for contributor {}", tickets.size(), contributorId);
+            return ResponseEntity.ok(tickets);
+        } catch (IllegalArgumentException e) {
+            log.warn("Contributor not found: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error fetching tickets for contributor {}", contributorId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @Operation(summary = "📊 Get ticket count for contributor")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved ticket count"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    @GetMapping("/{contributorId}/tickets/count")
+    public ResponseEntity<Long> getTicketCountForContributor(
+            @Parameter(description = "Contributor ID") @PathVariable Long contributorId) {
+        log.info("GET /api/contributors/{}/tickets/count - Getting ticket count for contributor", contributorId);
+        try {
+            long count = ticketContributorService.countTicketsForContributor(contributorId);
+            log.info("Contributor {} has {} tickets", contributorId, count);
+            return ResponseEntity.ok(count);
+        } catch (Exception e) {
+            log.error("Error getting ticket count for contributor {}", contributorId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

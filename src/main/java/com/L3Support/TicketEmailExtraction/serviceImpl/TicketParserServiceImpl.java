@@ -456,23 +456,11 @@ public class TicketParserServiceImpl implements TicketParserService {
         }
         
         // CKPL
-        if (contentLower.contains("ckpl")) {
+        if (contentLower.contains("formbuilder")) {
             log.info("🎯 Project found by keyword matching: CKPL");
-            return Project.CKPL;
+            return Project.FORM_BUILDER;
         }
-        
-        // CavinKare
-        if (contentLower.contains("cavinkare") || contentLower.contains("cavin kare")) {
-            log.info("🎯 Project found by keyword matching: CAVINKARE");
-            return Project.CAVINKARE;
-        }
-        
-        // HRSS
-        if (contentLower.contains("hrss") || contentLower.contains("hr")) {
-            log.info("🎯 Project found by keyword matching: HRSS");
-            return Project.HRSS;
-        }
-        
+
         log.info("🎯 No specific project found, using default: GENERAL");
         return Project.GENERAL; // Default project
     }
