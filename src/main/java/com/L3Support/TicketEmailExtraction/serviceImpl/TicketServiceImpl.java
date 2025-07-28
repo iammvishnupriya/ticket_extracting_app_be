@@ -14,6 +14,7 @@ import com.L3Support.TicketEmailExtraction.model.Ticket;
 import com.L3Support.TicketEmailExtraction.model.TicketResponse;
 import com.L3Support.TicketEmailExtraction.repository.ContributorRepository;
 import com.L3Support.TicketEmailExtraction.repository.TicketRepository;
+import com.L3Support.TicketEmailExtraction.service.TicketContributorService;
 import com.L3Support.TicketEmailExtraction.service.TicketService;
 
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class TicketServiceImpl implements TicketService {
     
     private final TicketRepository ticketRepository;
     private final ContributorRepository contributorRepository;
+    private final TicketContributorService ticketContributorService;
     
     @Override
     @Transactional(readOnly = true)
@@ -35,7 +37,7 @@ public class TicketServiceImpl implements TicketService {
         try {
             List<Ticket> tickets = ticketRepository.findAllWithContributors();
             return tickets.stream()
-                    .map(TicketResponse::fromEntity)
+                    .map(this::convertToTicketResponseWithMultipleContributors)
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Error fetching all tickets", e);
@@ -49,7 +51,7 @@ public class TicketServiceImpl implements TicketService {
         log.debug("Fetching ticket by ID: {}", id);
         try {
             return ticketRepository.findByIdWithContributor(id)
-                    .map(TicketResponse::fromEntity);
+                    .map(this::convertToTicketResponseWithMultipleContributors);
         } catch (Exception e) {
             log.error("Error fetching ticket by ID: {}", id, e);
             throw new RuntimeException("Failed to fetch ticket by ID: " + id, e);
@@ -62,7 +64,7 @@ public class TicketServiceImpl implements TicketService {
         try {
             Ticket saved = ticketRepository.save(ticket);
             log.info("Created ticket with ID: {}", saved.getId());
-            return TicketResponse.fromEntity(saved);
+            return convertToTicketResponseWithMultipleContributors(saved);
         } catch (Exception e) {
             log.error("Error creating ticket", e);
             throw new RuntimeException("Failed to create ticket", e);
@@ -86,8 +88,9 @@ public class TicketServiceImpl implements TicketService {
             existingTicket.setReview(updatedTicket.getReview());
             existingTicket.setTicketOwner(updatedTicket.getTicketOwner());
             
-            // Handle contributor updates
+            // Handle contributor updates (both single and multiple)
             updateContributor(existingTicket, updatedTicket);
+            updateMultipleContributors(existingTicket, updatedTicket);
             
             existingTicket.setBugType(updatedTicket.getBugType());
             existingTicket.setImpact(updatedTicket.getImpact());
@@ -97,7 +100,7 @@ public class TicketServiceImpl implements TicketService {
             
             Ticket saved = ticketRepository.save(existingTicket);
             log.info("Updated ticket with ID: {}", saved.getId());
-            return TicketResponse.fromEntity(saved);
+            return convertToTicketResponseWithMultipleContributors(saved);
         } catch (Exception e) {
             log.error("Error updating ticket with ID: {}", id, e);
             throw new RuntimeException("Failed to update ticket with ID: " + id, e);
@@ -127,7 +130,7 @@ public class TicketServiceImpl implements TicketService {
             Status statusEnum = Status.valueOf(status.toUpperCase());
             List<Ticket> tickets = ticketRepository.findByStatusWithContributors(statusEnum);
             return tickets.stream()
-                    .map(TicketResponse::fromEntity)
+                    .map(this::convertToTicketResponseWithMultipleContributors)
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Error fetching tickets by status: {}", status, e);
@@ -143,7 +146,7 @@ public class TicketServiceImpl implements TicketService {
             Priority priorityEnum = Priority.valueOf(priority.toUpperCase());
             List<Ticket> tickets = ticketRepository.findByPriorityWithContributors(priorityEnum);
             return tickets.stream()
-                    .map(TicketResponse::fromEntity)
+                    .map(this::convertToTicketResponseWithMultipleContributors)
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Error fetching tickets by priority: {}", priority, e);
@@ -205,5 +208,55 @@ public class TicketServiceImpl implements TicketService {
             log.debug("Explicitly removed contributor (empty name provided)");
         }
         // Otherwise: preserve existing values (no contributor update requested)
+    }
+    
+    /**
+     * Helper method to handle multiple contributors updates
+     */
+    private void updateMultipleContributors(Ticket existingTicket, Ticket updatedTicket) {
+        // Priority 1: contributorIdsList is provided (from frontend)
+        if (updatedTicket.getContributorIdsList() != null) {
+            if (updatedTicket.getContributorIdsList().isEmpty()) {
+                // Empty list means remove all contributors
+                existingTicket.setContributorIds(null);
+                log.debug("Removed all multiple contributors from ticket");
+            } else {
+                // Validate all contributor IDs exist
+                for (Long contributorId : updatedTicket.getContributorIdsList()) {
+                    if (!contributorRepository.existsById(contributorId)) {
+                        log.warn("Contributor not found with ID: {}. Skipping.", contributorId);
+                        continue;
+                    }
+                }
+                
+                // Convert list to comma-separated string
+                String contributorIdsStr = updatedTicket.getContributorIdsList().stream()
+                        .map(String::valueOf)
+                        .collect(Collectors.joining(","));
+                existingTicket.setContributorIds(contributorIdsStr);
+                log.debug("Updated multiple contributors to: {}", contributorIdsStr);
+            }
+        }
+        // Priority 2: contributorIds string is provided directly
+        else if (updatedTicket.getContributorIds() != null) {
+            existingTicket.setContributorIds(updatedTicket.getContributorIds());
+            log.debug("Updated contributor IDs string to: {}", updatedTicket.getContributorIds());
+        }
+        // Otherwise: preserve existing values (no multiple contributors update requested)
+    }
+    
+    /**
+     * Helper method to convert Ticket to TicketResponse with multiple contributors populated
+     */
+    private TicketResponse convertToTicketResponseWithMultipleContributors(Ticket ticket) {
+        try {
+            // Fetch multiple contributors for this ticket
+            List<Contributor> multipleContributors = ticketContributorService.getContributorsForTicket(ticket.getId());
+            return TicketResponse.fromEntity(ticket, multipleContributors);
+        } catch (Exception e) {
+            log.warn("Error fetching multiple contributors for ticket {}: {}. Using basic response.", ticket.getId(), e.getMessage());
+            // Fallback to basic response without multiple contributors
+            return TicketResponse.fromEntity(ticket);
+        }
     }
 }
