@@ -59,6 +59,6 @@ public class ConsolidateServiceImpl implements ConsolidateService {
             return false;
         }
         // Consider CLOSED, FIXED, RESOLVED as closed statuses
-        return status == Status.CLOSED || status == Status.FIXED || status == Status.RESOLVED;
+        return status == Status.CLOSED || status == Status.FIXED || status == Status.ONHOLD;
     }
 }
